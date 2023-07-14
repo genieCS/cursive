@@ -5,7 +5,7 @@ use cursive_core::{
     Vec2,
     theme,
 };
-use std::collections::VecDeque;
+use std::collections::{ VecDeque, HashMap };
 use std::rc::Rc;
 use std::cell::RefCell;
 use web_sys::{
@@ -15,7 +15,7 @@ use web_sys::{
 use wasm_bindgen::prelude::*;
 use crate::backend;
 
-
+type PosText = (Vec2, String);
 /// Backend using wasm.
 pub struct Backend {
     canvas: HtmlCanvasElement,
@@ -24,6 +24,7 @@ pub struct Backend {
     font_height: usize,
     font_width: usize,
     events: Rc<RefCell<VecDeque<Event>>>,
+    buffer: RefCell<HashMap<ColorPair, Vec<PosText>>>,
 }
 impl Backend {
     /// Creates a new Cursive root using a wasm backend.
@@ -88,13 +89,14 @@ impl Backend {
             ))?;
          closure.forget();
 
-         let c = Backend { 
+        let c = Backend {
             canvas,
             ctx,
             color,
             font_height,
             font_width,
             events,     
+            buffer: RefCell::new(HashMap::new()),
          };
         Ok(Box::new(c))
     }
@@ -109,7 +111,21 @@ impl cursive_core::backend::Backend for Backend {
         self.canvas.set_title(&title);
     }
 
-    fn refresh(self: &mut Backend) {}
+    fn refresh(self: &mut Backend) {
+        web_sys::console::log_1(&JsValue::from_str("backend refresh"));
+        let buffer: &mut HashMap<ColorPair, Vec<PosText>> = &mut self.buffer.borrow_mut();
+        for (color, pos_text) in buffer.into_iter() {
+            self.ctx.set_fill_style(&JsValue::from_str(&color.back));
+            for (pos, text) in pos_text.into_iter() {
+                self.ctx.fill_rect((pos.x * self.font_width) as f64, (pos.y * self.font_height) as f64, ((self.font_width + 2) * text.len()) as f64, self.font_height as f64);
+            }
+            self.ctx.set_fill_style(&JsValue::from_str(&color.front));
+            for (pos, text) in pos_text.into_iter() {
+                self.ctx.fill_text(text, (pos.x * self.font_width) as f64, (pos.y * self.font_height + self.font_height * 3/4) as f64).unwrap();
+            }
+        }
+        buffer.clear();
+    }
 
     fn has_colors(self: &Backend) -> bool {
         true
@@ -121,10 +137,12 @@ impl cursive_core::backend::Backend for Backend {
 
     fn print_at(self: &Backend, pos: Vec2, text: &str) {
         let color = self.color.borrow();
-        self.ctx.set_fill_style(&JsValue::from_str(&color.back));
-        self.ctx.fill_rect((pos.x * self.font_width) as f64, (pos.y * self.font_height) as f64, ((self.font_width + 3) * text.len()) as f64, self.font_height as f64);
-        self.ctx.set_fill_style(&JsValue::from_str(&color.front));
-        self.ctx.fill_text(text, (pos.x * self.font_width) as f64, (pos.y * self.font_height + self.font_height * 3/4) as f64).unwrap();
+        let mut buffer = self.buffer.borrow_mut();
+        if buffer.contains_key(&*color) {
+            buffer.get_mut(&*color).unwrap().push((pos, text.to_string()));
+        } else {
+            buffer.insert(color.clone(), vec![(pos, text.to_string())]);
+        }
     }
 
     fn clear(self: &Backend, color: cursive_core::theme::Color) {
@@ -152,7 +170,8 @@ impl cursive_core::backend::Backend for Backend {
 /// Type of hex color which starts with #.
 pub type Color = String;
 
-/// Type of color pair. 
+/// Type of color pair.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)] 
 pub struct ColorPair {
     /// Foreground text color.
     pub front: Color,

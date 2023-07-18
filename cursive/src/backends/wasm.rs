@@ -5,26 +5,57 @@ use cursive_core::{
     Vec2,
     theme,
 };
-use std::collections::{ VecDeque, HashMap };
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::cell::RefCell;
-use web_sys::{
-    HtmlCanvasElement,
-    CanvasRenderingContext2d,
-};
+use web_sys::HtmlCanvasElement;
 use wasm_bindgen::prelude::*;
 use crate::backend;
+use serde::{Serialize, Deserialize};
 
-type PosText = (Vec2, String);
+#[wasm_bindgen]
+#[derive(Serialize, Deserialize)]
+struct TextColorPairs {
+    data: Vec<TextColorPair>,
+}
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct TextColorPair  {
+    text: String ,
+    color: ColorPair,
+}
+
+impl TextColorPair {
+    pub fn new(text: String, color: ColorPair) -> Self {
+        Self {
+            text,
+            color,
+        }
+    }
+}
+
+impl Clone for TextColorPair {
+    fn clone(&self) -> Self {
+        Self {
+            text: self.text.clone(),
+            color: self.color.clone(),
+        }
+    }
+}
+
+
+#[wasm_bindgen(module = "/src/backends/canvas.js")]
+extern "C" {
+    fn paint(buffer: JsValue);
+}
+
 /// Backend using wasm.
 pub struct Backend {
     canvas: HtmlCanvasElement,
-    ctx: CanvasRenderingContext2d,
     color: RefCell<ColorPair>,
-    font_height: usize,
-    font_width: usize,
     events: Rc<RefCell<VecDeque<Event>>>,
-    buffer: RefCell<HashMap<ColorPair, Vec<PosText>>>,
+    buffer: RefCell<Vec<TextColorPair>>,
 }
 impl Backend {
     /// Creates a new Cursive root using a wasm backend.
@@ -52,28 +83,10 @@ impl Backend {
         canvas.set_width(1000);
         canvas.set_height(1000);
 
-        let font_width = 12;     
-        let font_height = font_width * 2;
-        let ctx: CanvasRenderingContext2d = canvas.get_context("2d")
-            .map_err(|_| std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Failed to get canvas context",
-            ))?
-            .ok_or(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Failed to get canvas context",
-            ))?
-            .dyn_into::<CanvasRenderingContext2d>()
-            .map_err(|_| std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Failed to cast canvas context",
-            ))?;
-        ctx.set_font(&format!("{}px monospace", font_height));
-
-        let color = RefCell::new(cursive_to_color_pair(theme::ColorPair {
+        let color = cursive_to_color_pair(theme::ColorPair {
             front: theme::Color::Light(theme::BaseColor::Black),
             back:theme::Color::Dark(theme::BaseColor::Green),
-        }));
+        });
 
         let events = Rc::new(RefCell::new(VecDeque::new()));
          let cloned = events.clone();
@@ -89,14 +102,13 @@ impl Backend {
             ))?;
          closure.forget();
 
+        let buffer = vec![TextColorPair::new(' '.to_string(), color.clone()); 1_000_000];
+
         let c = Backend {
             canvas,
-            ctx,
-            color,
-            font_height,
-            font_width,
+            color: RefCell::new(color),
             events,     
-            buffer: RefCell::new(HashMap::new()),
+            buffer: RefCell::new(buffer),
          };
         Ok(Box::new(c))
     }
@@ -112,19 +124,9 @@ impl cursive_core::backend::Backend for Backend {
     }
 
     fn refresh(self: &mut Backend) {
-        web_sys::console::log_1(&JsValue::from_str("backend refresh"));
-        let buffer: &mut HashMap<ColorPair, Vec<PosText>> = &mut self.buffer.borrow_mut();
-        for (color, pos_text) in buffer.into_iter() {
-            self.ctx.set_fill_style(&JsValue::from_str(&color.back));
-            for (pos, text) in pos_text.into_iter() {
-                self.ctx.fill_rect((pos.x * self.font_width) as f64, (pos.y * self.font_height) as f64, ((self.font_width + 2) * text.len()) as f64, self.font_height as f64);
-            }
-            self.ctx.set_fill_style(&JsValue::from_str(&color.front));
-            for (pos, text) in pos_text.into_iter() {
-                self.ctx.fill_text(text, (pos.x * self.font_width) as f64, (pos.y * self.font_height + self.font_height * 3/4) as f64).unwrap();
-            }
-        }
-        buffer.clear();
+        let data = self.buffer.borrow().clone();
+        let pairs = TextColorPairs { data };
+        paint(serde_wasm_bindgen::to_value(&pairs).unwrap());
     }
 
     fn has_colors(self: &Backend) -> bool {
@@ -136,17 +138,15 @@ impl cursive_core::backend::Backend for Backend {
     }
 
     fn print_at(self: &Backend, pos: Vec2, text: &str) {
-        let color = self.color.borrow();
+        let color = (*self.color.borrow()).clone();
         let mut buffer = self.buffer.borrow_mut();
-        if buffer.contains_key(&*color) {
-            buffer.get_mut(&*color).unwrap().push((pos, text.to_string()));
-        } else {
-            buffer.insert(color.clone(), vec![(pos, text.to_string())]);
+        for (i, c) in text.chars().enumerate() {
+            let x = pos.x + i;
+            buffer[1000 * pos.y + x] = TextColorPair::new(c.to_string(), color.clone());
         }
     }
 
-    fn clear(self: &Backend, color: cursive_core::theme::Color) {
-        self.ctx.set_fill_style(&JsValue::from_str(&cursive_to_color(color)));
+    fn clear(self: &Backend, _color: cursive_core::theme::Color) {
     }
 
     fn set_color(self: &Backend, color_pair: cursive_core::theme::ColorPair) -> cursive_core::theme::ColorPair {
@@ -171,7 +171,7 @@ impl cursive_core::backend::Backend for Backend {
 pub type Color = String;
 
 /// Type of color pair.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)] 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)] 
 pub struct ColorPair {
     /// Foreground text color.
     pub front: Color,

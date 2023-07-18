@@ -96,7 +96,8 @@ builder = ["inventory", "cursive-macros/builder"]
 markdown = ["pulldown-cmark"]
 ansi = ["ansi-parser"]
 unstable_scroll = []  # Deprecated feature, remove in next version
-wasm = ["js-sys", "getrandom", "web-sys", "wasm-bindgen", "wasm-bindgen-futures"]
+wasm = ["js-sys", "getrandom", "web-sys", "wasm-bindgen", "wasm-bindgen-futures", "async"]
+async = []
 
 [lib]
 name = "cursive_core"

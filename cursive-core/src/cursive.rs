@@ -840,8 +840,15 @@ impl Cursive {
     /// Runs a dummy event loop.
     ///
     /// Initializes a dummy backend for the event loop.
+    #[cfg(not(feature = "async"))]
     pub fn run_dummy(&mut self) {
         self.run_with(backend::Dummy::init)
+    }
+
+    /// Runs a dummy event loop.
+    #[cfg(feature = "async")]
+    pub async fn run_dummy(&mut self) {
+        self.run_with(backend::Dummy::init).await
     }
 
     /// Returns a new runner on the given backend.
@@ -871,6 +878,7 @@ impl Cursive {
     /// Initialize the backend and runs the event loop.
     ///
     /// Used for infallible backend initializers.
+    #[cfg(not(feature = "async"))]
     pub fn run_with<F>(&mut self, backend_init: F)
     where
         F: FnOnce() -> Box<dyn backend::Backend>,
@@ -881,17 +889,18 @@ impl Cursive {
     /// Initialize the backend and runs the event loop.
     ///
     /// Used for infallible backend initializers.
-    #[cfg(feature = "wasm")]
-    pub async fn run_with_async<F>(&mut self, backend_init: F)
+    #[cfg(feature = "async")]
+    pub async fn run_with<F>(&mut self, backend_init: F)
     where
         F: FnOnce() -> Box<dyn backend::Backend>,
     {
-        self.try_run_with_async::<(), _>(|| Ok(backend_init())).await.unwrap();
+        self.try_run_with::<(), _>(|| Ok(backend_init())).await.unwrap();
     }
 
     /// Initialize the backend and runs the event loop.
     ///
     /// Returns an error if initializing the backend fails.
+    #[cfg(not(feature = "async"))]
     pub fn try_run_with<E, F>(&mut self, backend_init: F) -> Result<(), E>
     where
         F: FnOnce() -> Result<Box<dyn backend::Backend>, E>,
@@ -904,8 +913,8 @@ impl Cursive {
     }
 
     /// try run with async
-    #[cfg(feature = "wasm")]
-    pub async fn try_run_with_async<E, F>(&mut self, backend_init: F) -> Result<(), E>
+    #[cfg(feature = "async")]
+    pub async fn try_run_with<E, F>(&mut self, backend_init: F) -> Result<(), E>
     where
         F: FnOnce() -> Result<Box<dyn backend::Backend>, E>,
     {

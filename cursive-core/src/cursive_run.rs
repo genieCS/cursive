@@ -181,7 +181,7 @@ where
     }
 
     /// post_events asynchronously
-    #[cfg(feature = "wasm")]
+    #[cfg(feature = "async")]
     pub async fn post_events_async(&mut self, received_something: bool) {
         let boring = !received_something;
         // How many times should we try if it's still boring?
@@ -215,7 +215,7 @@ where
         std::thread::sleep(Duration::from_millis(INPUT_POLL_DELAY_MS));
     }
 
-    #[cfg(feature = "wasm")]
+    #[cfg(all(feature = "async", feature = "wasm"))]
     async fn sleep_async(&self) {
         use wasm_bindgen::prelude::*;
         let promise = js_sys::Promise::new(&mut |resolve, _| {
@@ -273,7 +273,7 @@ where
     }
 
     /// step asynchronously
-    #[cfg(feature = "wasm")]
+    #[cfg(feature = "async")]
     pub async fn step_async(&mut self) -> bool {
         let received_something = self.process_events();
         self.post_events_async(received_something).await;
@@ -303,7 +303,7 @@ where
     }
 
     /// Runs the event loop asynchronously.
-    #[cfg(feature = "wasm")]
+    #[cfg(feature = "async")]
     pub async fn run_async(&mut self) {
         self.refresh();
 

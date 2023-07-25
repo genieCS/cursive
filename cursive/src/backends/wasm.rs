@@ -11,23 +11,17 @@ use std::cell::RefCell;
 use web_sys::HtmlCanvasElement;
 use wasm_bindgen::prelude::*;
 use crate::backend;
-use serde::{Serialize, Deserialize};
 
 #[wasm_bindgen]
-#[derive(Serialize, Deserialize)]
-struct TextColorPairs {
-    data: Vec<TextColorPair>,
-}
-
-#[wasm_bindgen]
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq)]
+#[repr(C)]
 struct TextColorPair  {
-    text: String ,
+    text: char,
     color: ColorPair,
 }
 
 impl TextColorPair {
-    pub fn new(text: String, color: ColorPair) -> Self {
+    pub fn new(text: char, color: ColorPair) -> Self {
         Self {
             text,
             color,
@@ -35,10 +29,19 @@ impl TextColorPair {
     }
 }
 
+fn text_color_pairs_to_bytes(buffer: &Vec<TextColorPair>) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(
+            buffer.as_ptr() as *const u8,
+            buffer.len() * std::mem::size_of::<TextColorPair>(),
+        )
+    }
+}
+
 impl Clone for TextColorPair {
     fn clone(&self) -> Self {
         Self {
-            text: self.text.clone(),
+            text: self.text,
             color: self.color.clone(),
         }
     }
@@ -47,7 +50,7 @@ impl Clone for TextColorPair {
 
 #[wasm_bindgen(module = "/src/backends/canvas.js")]
 extern "C" {
-    fn paint(buffer: JsValue);
+    fn paint(buffer: &[u8]);
 }
 
 /// Backend using wasm.
@@ -102,7 +105,7 @@ impl Backend {
             ))?;
          closure.forget();
 
-        let buffer = vec![TextColorPair::new(' '.to_string(), color.clone()); 1_000_000];
+        let buffer = vec![TextColorPair::new(' ', color.clone()); 1_000_000];
 
         let c = Backend {
             canvas,
@@ -124,9 +127,10 @@ impl cursive_core::backend::Backend for Backend {
     }
 
     fn refresh(self: &mut Backend) {
+        web_sys::console::time_with_label("refresh");
         let data = self.buffer.borrow().clone();
-        let pairs = TextColorPairs { data };
-        paint(serde_wasm_bindgen::to_value(&pairs).unwrap());
+        paint(text_color_pairs_to_bytes(&data));
+        web_sys::console::time_end_with_label("refresh");
     }
 
     fn has_colors(self: &Backend) -> bool {
@@ -142,7 +146,7 @@ impl cursive_core::backend::Backend for Backend {
         let mut buffer = self.buffer.borrow_mut();
         for (i, c) in text.chars().enumerate() {
             let x = pos.x + i;
-            buffer[1000 * pos.y + x] = TextColorPair::new(c.to_string(), color.clone());
+            buffer[1000 * pos.y + x] = TextColorPair::new(c, color.clone());
         }
     }
 
@@ -167,11 +171,28 @@ impl cursive_core::backend::Backend for Backend {
 }
 
 
-/// Type of hex color which starts with #.
-pub type Color = String;
+/// Type of hex color which is r,g,b
+#[wasm_bindgen]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Color {
+    red: u8, 
+    green: u8,
+    blue: u8
+}
+
+impl Color {
+    /// Creates a new `Color` with the given red, green, and blue values.
+    pub fn new(red: u8, green: u8, blue: u8) -> Self {
+        Self {
+            red,
+            green,
+            blue,
+        }
+    }
+}
 
 /// Type of color pair.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)] 
+#[derive(Clone, Debug, PartialEq, Eq)] 
 pub struct ColorPair {
     /// Foreground text color.
     pub front: Color,
@@ -182,25 +203,25 @@ pub struct ColorPair {
 /// Convert cursive color to hex color.
 pub fn cursive_to_color(color: theme::Color) -> Color {
     match color {
-        theme::Color::Dark(theme::BaseColor::Black) => "#000000".to_string(),
-        theme::Color::Dark(theme::BaseColor::Red) => "#800000".to_string(),
-        theme::Color::Dark(theme::BaseColor::Green) => "#008000".to_string(),
-        theme::Color::Dark(theme::BaseColor::Yellow) => "#808000".to_string(),
-        theme::Color::Dark(theme::BaseColor::Blue) => "#000080".to_string(),
-        theme::Color::Dark(theme::BaseColor::Magenta) => "#800080".to_string(),
-        theme::Color::Dark(theme::BaseColor::Cyan) => "#008080".to_string(),
-        theme::Color::Dark(theme::BaseColor::White) => "#c0c0c0".to_string(),
-        theme::Color::Light(theme::BaseColor::Black) => "#808080".to_string(),
-        theme::Color::Light(theme::BaseColor::Red) => "#ff0000".to_string(),
-        theme::Color::Light(theme::BaseColor::Green) => "#00ff00".to_string(),
-        theme::Color::Light(theme::BaseColor::Yellow) => "#ffff00".to_string(),
-        theme::Color::Light(theme::BaseColor::Blue) => "#0000ff".to_string(),
-        theme::Color::Light(theme::BaseColor::Magenta) => "#ff00ff".to_string(),
-        theme::Color::Light(theme::BaseColor::Cyan) => "#00ffff".to_string(),
-        theme::Color::Light(theme::BaseColor::White) => "#ffffff".to_string(),
-        theme::Color::Rgb(r, g, b) => format!("#{:02x}{:02x}{:02x}", r, g, b).to_string(),
-        theme::Color::RgbLowRes(r,g ,b ) => format!("#{:01x}{:01x}{:01x}", r, g, b).to_string(),
-        theme::Color::TerminalDefault => "#00ff00".to_string(),
+        theme::Color::Dark(theme::BaseColor::Black) => Color::new(0,0,0),
+        theme::Color::Dark(theme::BaseColor::Red) => Color::new(128,0,0),
+        theme::Color::Dark(theme::BaseColor::Green) => Color::new(0,128,0),
+        theme::Color::Dark(theme::BaseColor::Yellow) => Color::new(128,128,0),
+        theme::Color::Dark(theme::BaseColor::Blue) => Color::new(0,0,128),
+        theme::Color::Dark(theme::BaseColor::Magenta) => Color::new(128,0,128),
+        theme::Color::Dark(theme::BaseColor::Cyan) => Color::new(0,128,128),
+        theme::Color::Dark(theme::BaseColor::White) => Color::new(182,182,182),
+        theme::Color::Light(theme::BaseColor::Black) => Color::new(128,128,128),
+        theme::Color::Light(theme::BaseColor::Red) => Color::new(255,0,0),
+        theme::Color::Light(theme::BaseColor::Green) => Color::new(0,0,255),
+        theme::Color::Light(theme::BaseColor::Yellow) => Color::new(255,255,0),
+        theme::Color::Light(theme::BaseColor::Blue) => Color::new(0,0,255),
+        theme::Color::Light(theme::BaseColor::Magenta) => Color::new(255,0,255),
+        theme::Color::Light(theme::BaseColor::Cyan) => Color::new(0,255,255),
+        theme::Color::Light(theme::BaseColor::White) => Color::new(255,255,255),
+        theme::Color::Rgb(r, g, b) =>  Color::new(r,g,b),
+        theme::Color::RgbLowRes(r,g ,b ) =>  Color::new(r,g,b),
+        theme::Color::TerminalDefault =>  Color::new(0,255,0),
     }
 }
 

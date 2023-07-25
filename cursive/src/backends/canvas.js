@@ -3,6 +3,7 @@ const fontHeight = fontWidth * 2;
 const textColorPairSize = 12;
 
 export function paint(buffer) {
+    console.log("paint");
     const data = new Uint8Array(buffer);
     const canvas = document.getElementById('cursive-wasm-canvas');
     const context = canvas.getContext('2d');

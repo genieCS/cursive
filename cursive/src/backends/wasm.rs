@@ -59,6 +59,7 @@ pub struct Backend {
     color: RefCell<ColorPair>,
     events: Rc<RefCell<VecDeque<Event>>>,
     buffer: RefCell<Vec<TextColorPair>>,
+    count: Rc<RefCell<u32>>,
 }
 impl Backend {
     /// Creates a new Cursive root using a wasm backend.
@@ -122,8 +123,13 @@ impl Backend {
             color: RefCell::new(color),
             events,     
             buffer: RefCell::new(buffer),
+            count: Rc::new(RefCell::new(0)),
          };
         Ok(Box::new(c))
+    }
+
+    fn _refresh(self: &Backend, buffer: &Vec<TextColorPair>) {
+        paint(text_color_pairs_to_bytes(&buffer));
     }
 }
 
@@ -155,6 +161,14 @@ impl cursive_core::backend::Backend for Backend {
         for (i, c) in text.chars().enumerate() {
             let x = pos.x + i;
             buffer[1000 * pos.y + x] = TextColorPair::new(c, color.clone());
+        }
+        let mut count = self.count.borrow_mut();
+        *count += 1;
+        if *count == 100000 {
+            web_sys::console::time_with_label("_refresh");
+            self._refresh(&buffer);
+            web_sys::console::time_end_with_label("_refresh");
+            *count = 0;
         }
     }
 

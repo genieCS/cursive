@@ -62,7 +62,6 @@ features = [
     "TextMetrics",
     "Window",
     "Document",
-    "console",
 ]
 
 [dependencies.getrandom]
@@ -74,10 +73,6 @@ features = ["js"]
 optional = true
 version = "0.5.0"
 
-[dependencies.serde]
-optional = true
-version = "1.0"
-features = ["derive"]
 
 [features]
 doc-cfg = ["cursive_core/doc-cfg"]  # Enable doc_cfg, a nightly-only doc feature.
@@ -92,7 +87,7 @@ markdown = ["cursive_core/markdown"]
 ansi = ["cursive_core/ansi"]
 unstable_scroll = []  # Deprecated feature, remove in next version
 toml = ["cursive_core/toml"]
-wasm-backend = ["wasm-bindgen", "web-sys", "cursive_core/wasm", "getrandom", "serde-wasm-bindgen", "serde"]
+wasm-backend = ["wasm-bindgen", "web-sys", "cursive_core/wasm", "getrandom", "serde-wasm-bindgen"]
 
 [lib]
 name = "cursive"
